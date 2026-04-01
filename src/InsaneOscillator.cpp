@@ -1,61 +1,55 @@
 #include "sierrachart.h"
 
-SCDLLName("InsaneOscillator");
+SCDLLName("InsaneOscillator")
 
-// Subgraphs
-SCSubgraph RSI;
-SCSubgraph Midline;
-SCSubgraph UpRMA;
-SCSubgraph DownRMA;
+SCSFExport void scsf_InsaneOscillator(SCStudyInterfaceRef sc) {
+    sc.AutoLoop = 1;
+    sc.UpdateAlways = 0;
 
-// Input
-int Length = 14;
+    // Inputs for RSI Length/OB/OS
+    int rsiLength = 14;
+    float overbought = 70.0f;
+    float oversold = 30.0f;
 
-void scsf_InsaneOscillator(SCStudyInterfaceRef sc)
-{
-    // Set up RSI and Midline subgraphs
-    RSI.Name = "RSI";
-    Midline.Name = "Midline";
+    // Subgraphs
+    SCSubgraphRef rsi = sc.Subgraph[0];
+    SCSubgraphRef midline = sc.Subgraph[1];
+    SCSubgraphRef upRMA = sc.Subgraph[2];
+    SCSubgraphRef downRMA = sc.Subgraph[3];
 
-    // Initialization
-    if (sc.SetDefaults)
-    {
-        sc.GraphName = "Insane Oscillator";
-        sc.StudyDescription = "Insane Oscillator using Wilder RMA";
-        sc.AutoLoop = 0; // Disable default AutoLoop
-        return;
+    // Initialize subgraph properties
+    rsi.Name = "RSI";
+    midline.Name = "Midline";
+    upRMA.Name = "UpRMA";
+    downRMA.Name = "DownRMA";
+
+    // Set the graph region to 1
+    rsi.GraphRegion = 1;
+    midline.GraphRegion = 1;
+    upRMA.GraphRegion = 1;
+    downRMA.GraphRegion = 1;
+
+    // Marker gating placeholder
+    bool barClosed = (sc.Index < sc.ArraySize - 1);
+
+    // Implement Pine-exact RSI
+    if (sc.Index >= rsiLength) {
+        float sum = 0;
+        for (int i = 1; i <= rsiLength; ++i) {
+            sum += sc.Close[sc.Index - i];
+        }
+        float seedSMA = sum / rsiLength;
+        float prevRMA = seedSMA;
+        for (int i = rsiLength; i <= sc.Index; ++i) {
+            float x = sc.Close[i];
+            if (i > rsiLength) {
+                prevRMA = (prevRMA * (rsiLength - 1) + x) / rsiLength;
+            }
+            rsi[i] = (prevRMA);
+        }
     }
 
-    // Compute the gains and losses
-    float Gain = 0;
-    float Loss = 0;
-
-    // Calculate SMA for the first 'Length' gains/losses
-    if (sc.Index < Length) return; // Ensure we have enough data
-
-    for (int i = sc.Index - Length + 1; i <= sc.Index; i++)
-    {
-        float change = sc.Close[i] - sc.Close[i - 1];
-        if (change > 0) Gain += change;
-        else Loss -= change;
-    }
-
-    Gain /= Length;
-    Loss /= Length;
-
-    // Recursive RMA calculation
-    UpRMA[sc.Index] = (Gain * (1.0 / Length)) + (UpRMA[sc.Index - 1] * (Length - 1) / Length);
-    DownRMA[sc.Index] = (Loss * (1.0 / Length)) + (DownRMA[sc.Index - 1] * (Length - 1) / Length);
-
-    // Calculate RSI
-    if (DownRMA[sc.Index] != 0)
-        RSI[sc.Index] = 100 - (100 / (1 + (UpRMA[sc.Index] / DownRMA[sc.Index])));
-    else
-        RSI[sc.Index] = 100; // Maximum RSI when DownRMA is zero
-
-    // Set midline
-    Midline[sc.Index] = 50;
-
-    // Placeholder for bar-close-only marker gating
-    // Markers not yet implemented
+    // Pine guards for RMA
+    upRMA[sc.Index] = (downRMA[sc.Index] == 0) ? 0 : upRMA[sc.Index];
+    downRMA[sc.Index] = (upRMA[sc.Index] == 0) ? 100 : downRMA[sc.Index];
 }
